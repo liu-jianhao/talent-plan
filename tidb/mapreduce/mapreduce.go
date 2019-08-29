@@ -112,7 +112,45 @@ func (c *MRCluster) worker() {
 				// hint: don't encode results returned by ReduceF, and just output
 				// them into the destination file directly so that users can get
 				// results formatted as what they want.
-				panic("YOUR CODE HERE")
+				kv_map := make(map[string]([]string))
+
+				for i := 0; i < t.nMap; i++ {
+					// 读取map任务产生的文件
+					rpath := reduceName(t.dataDir, t.jobName, i, t.taskNumber)
+					f, err := os.Open(rpath)
+					if err != nil {
+						log.Fatalln(err)
+					}
+					defer f.Close()
+
+					decoder := json.NewDecoder(f)
+					var kv KeyValue
+					for ; decoder.More(); {
+						err := decoder.Decode(&kv)
+						if err != nil {
+							log.Fatalln(err)
+						}
+						kv_map[kv.Key] = append(kv_map[kv.Key], kv.Value)
+					}
+				}
+
+				//keys := make([]string, 0, len(kv_map))
+				//for k, _ := range kv_map {
+				//	keys = append(keys, k)
+				//}
+				//sort.Strings(keys)
+
+				// 创建输出文件
+				outf, err := os.Create(mergeName(t.dataDir, t.jobName, t.taskNumber))
+				if err != nil {
+					log.Fatalln(err)
+				}
+				defer outf.Close()
+
+				for k, v := range kv_map {
+					// 写入文件
+					outf.WriteString(t.reduceF(k, v))
+				}
 			}
 			t.wg.Done()
 		case <-c.exit:
@@ -159,7 +197,30 @@ func (c *MRCluster) run(jobName, dataDir string, mapF MapF, reduceF ReduceF, map
 
 	// reduce phase
 	// YOUR CODE HERE :D
-	panic("YOUR CODE HERE")
+	tasks = make([]*task, 0, nReduce)
+	for i := 0; i < nReduce; i++ {
+		t := &task{
+			dataDir:    dataDir,
+			jobName:    jobName,
+			phase:      reducePhase,
+			taskNumber: i,
+			nReduce:    nReduce,
+			nMap:       nMap,
+			reduceF:    reduceF,
+		}
+		t.wg.Add(1)
+		tasks = append(tasks, t)
+		go func() { c.taskCh <- t }()
+	}
+	for _, t := range tasks {
+		t.wg.Wait()
+	}
+
+	var inputFiles []string
+	for _, t := range tasks {
+		inputFiles = append(inputFiles, mergeName(t.dataDir, t.jobName, t.taskNumber))
+	}
+	notify <- inputFiles
 }
 
 func ihash(s string) int {
