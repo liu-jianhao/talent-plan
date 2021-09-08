@@ -26,7 +26,7 @@ impl KvStore {
     }
 
     /// Sets the value of a string key to a string.
-    /// 
+    ///
     /// If the key already exists, the previous value will be overwritten.
     pub fn set(&mut self, key: String, val: String) {
         if let Some(old) = self.map.insert(key, val) {
@@ -48,4 +48,3 @@ impl KvStore {
         }
     }
 }
-
